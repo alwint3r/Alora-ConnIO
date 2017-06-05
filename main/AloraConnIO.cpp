@@ -8,10 +8,13 @@
 #include <AllAboutEE_MAX11609.h>
 #include <Adafruit_SHT31.h>
 #include <SFE_LSM9DS0.h>
+#include <SparkFunTSL2561.h>
 
 using namespace AllAboutEE;
 
 static const char* TAG = "APP";
+unsigned int lightSensorReadDelay = 0;
+
 #define GAS_SENSOR_HEAT_PIN 17
 #define GAS_SENSOR_ADC_CHANNEL 0
 #define SOUND_SENSOR_ADDRESS 0x2f
@@ -24,12 +27,14 @@ BME280_I2C bme;
 MAX11609 adc;
 Adafruit_SHT31 sht31;
 LSM9DS0 imuSensor(MODE_I2C, LSM9DS0_G, LSM9DS0_XM_ADDRESS);
+SFE_TSL2561 lightSensor;
 
 void readSensorTask(void* parameter);
 void printGyro();
 void printAccel();
 void printMag();
 void writeToMicSensor(uint8_t reg, uint8_t data);
+void printLightSensor();
 
 extern "C" void app_main() {
     initArduino();
@@ -44,6 +49,20 @@ extern "C" void app_main() {
     }
 
     imuSensor.begin();
+    lightSensor.begin(TSL2561_ADDR_0);
+
+    unsigned char TSLID;
+    if (lightSensor.getID(TSLID)) {
+        ESP_LOGI(TAG, "Got TSL2561 factory ID: 0x%x", TSLID);
+
+        unsigned char time = 2;
+        lightSensor.setTiming(0, time, lightSensorReadDelay);
+
+        ESP_LOGI(TAG, "Powering TSL2561");
+        lightSensor.setPowerUp();
+    } else {
+        ESP_LOGE(TAG, "Failed to initialize TSL2561");
+    }
 
     ESP_LOGI(TAG, "Initializing gas sensor.");
     adc.begin(MAX11609::REF_VDD);
@@ -76,6 +95,9 @@ void readSensorTask(void* parameter) {
         printGyro();
         printAccel();
         printMag();
+
+        // TSL2561
+        printLightSensor();
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
@@ -126,4 +148,24 @@ void printMag() {
         imuSensor.calcMag(imuSensor.my),
         imuSensor.calcMag(imuSensor.mz),
         heading);
+}
+
+void printLightSensor() {
+    lightSensor.manualStart();
+    delay(lightSensorReadDelay);
+    lightSensor.manualStop();
+
+    unsigned int data0, data1;
+    double lux;
+
+    if (lightSensor.getData(data0, data1)) {
+        bool good;
+        bool gain = false;
+
+        good = lightSensor.getLux(gain, lightSensorReadDelay, data0, data1, lux);
+    } else {
+        lux = 0;
+    }
+
+    ESP_LOGI("LIGHT", "Lux: %f", lux);
 }
