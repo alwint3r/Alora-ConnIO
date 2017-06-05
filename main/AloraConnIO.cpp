@@ -6,6 +6,7 @@
 #include <Wire.h>
 #include <BME280_I2C.h>
 #include <AllAboutEE_MAX11609.h>
+#include <Adafruit_SHT31.h>
 
 using namespace AllAboutEE;
 
@@ -18,7 +19,10 @@ static const char* TAG = "APP";
 
 BME280_I2C bme;
 MAX11609 adc;
+Adafruit_SHT31 sht31;
 
+void writeToMicSensor(uint8_t reg, uint8_t data);
+void readSensorTask(void* parameter);
 void bmeReadTask(void* parameter);
 void gasSensorReadTask(void* parameter);
 void soundSensorReadTask(void* parameter);
@@ -29,53 +33,47 @@ extern "C" void app_main() {
 
     if (!bme.begin()) {
         ESP_LOGE(TAG, "Failed to initialize BME280");
-    } else {
-        ESP_LOGI(TAG, "Starting BME280 reading task");
-        xTaskCreate(bmeReadTask, "bmeReadTask", 2048, NULL, 1, NULL);
+    }
+
+    if (!sht31.begin(0x44)) {
+        ESP_LOGE(TAG, "Failed to initialize SHT31");
     }
 
     ESP_LOGI(TAG, "Initializing gas sensor.");
     adc.begin(MAX11609::REF_VDD);
     pinMode(GAS_SENSOR_HEAT_PIN, OUTPUT);
     digitalWrite(GAS_SENSOR_HEAT_PIN, HIGH);
-    xTaskCreate(gasSensorReadTask, "gasSensorReadTask", 2048, NULL, 1, NULL);
 
-    ESP_LOGI(TAG, "Initializing sound sensor.");
-    xTaskCreate(soundSensorReadTask, "soundSensorReadTask", 2048, NULL, 1, NULL);
+    xTaskCreate(readSensorTask, "readSensorTask", 2048, NULL, 1, NULL);
 }
 
-void bmeReadTask(void* parameter) {
-    bme.setTempCal(0);
-    const char* LOGTAG = "BME280";
+void readSensorTask(void* parameter) {
 
     while (true) {
+        // BME280
         bme.readSensor();
-        ESP_LOGI(LOGTAG, "T: %f\tP: %f\tH: %f",
+        ESP_LOGI("BME280", "T: %f\tP: %f\tH: %f",
             bme.getTemperature_C(),
             bme.getPressure_HP()/1000,
             bme.getHumidity());
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
-    }
-}
+        
+        // SHT31
+        ESP_LOGI("SHT31", "T: %f\tH: %f", sht31.readTemperature(), sht31.readHumidity());
+        
+        // Gas Sensor
+        ESP_LOGI("GAS_SENSOR", "%d", adc.read(GAS_SENSOR_ADC_CHANNEL));
 
-void gasSensorReadTask(void* parameter) {
-    const char* LOGTAG = "GAS_SENSOR";
+        // Sound Sensor
+        writeToMicSensor(0x00, (SOUND_SENSOR_R * 1.0f/(100*1000/256)));
+        ESP_LOGI("SOUND_SENSOR", "%d", adc.read(SOUND_SENSOR_CHANNEL));
 
-    while (true) {
-        ESP_LOGI(LOGTAG, "Read: %d", adc.read(GAS_SENSOR_ADC_CHANNEL));
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
 
-void soundSensorReadTask(void* parameter) {
-    const char* LOGTAG = "SOUND_SENSOR";
-    while (true) {
-        Wire.beginTransmission(SOUND_SENSOR_ADDRESS);
-        Wire.write((uint8_t) 0x00);
-        Wire.write((uint8_t) (SOUND_SENSOR_R * 1.0f/(100*1000/256)));
-        Wire.endTransmission();
-
-        ESP_LOGI(LOGTAG, "Read: %d", adc.read(SOUND_SENSOR_CHANNEL));
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+void writeToMicSensor(uint8_t reg, uint8_t data) {
+    Wire.beginTransmission(SOUND_SENSOR_ADDRESS);
+    Wire.write(reg);
+    Wire.write(data);//(SOUND_SENSOR_R * 1.0f/(100*1000/256)));
+    Wire.endTransmission();
 }
