@@ -2,6 +2,7 @@
     "files.associations": {
         "array": "cpp",
         "hash_map": "cpp",
-        "initializer_list": "cpp"
+        "initializer_list": "cpp",
+        "*.tcc": "cpp"
     }
 }

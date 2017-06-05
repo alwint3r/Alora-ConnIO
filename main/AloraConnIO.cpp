@@ -9,11 +9,13 @@
 #include <Adafruit_SHT31.h>
 #include <SFE_LSM9DS0.h>
 #include <SparkFunTSL2561.h>
+#include <ACROBOTIC_SSD1306.h>
 
 using namespace AllAboutEE;
 
 static const char* TAG = "APP";
 unsigned int lightSensorReadDelay = 0;
+double lastLuxValue = 0;
 
 #define GAS_SENSOR_HEAT_PIN 17
 #define GAS_SENSOR_ADC_CHANNEL 0
@@ -22,6 +24,8 @@ unsigned int lightSensorReadDelay = 0;
 #define SOUND_SENSOR_CHANNEL 1
 #define LSM9DS0_XM_ADDRESS 0x1d
 #define LSM9DS0_G 0x6b
+
+#define DISPLAY_ENABLED 0
 
 BME280_I2C bme;
 MAX11609 adc;
@@ -35,6 +39,7 @@ void printAccel();
 void printMag();
 void writeToMicSensor(uint8_t reg, uint8_t data);
 void printLightSensor();
+void displayReadingToOLED();
 
 extern "C" void app_main() {
     initArduino();
@@ -50,6 +55,10 @@ extern "C" void app_main() {
 
     imuSensor.begin();
     lightSensor.begin(TSL2561_ADDR_0);
+
+#if DISPLAY_ENABLED
+    oled.init();
+#endif
 
     unsigned char TSLID;
     if (lightSensor.getID(TSLID)) {
@@ -98,6 +107,11 @@ void readSensorTask(void* parameter) {
 
         // TSL2561
         printLightSensor();
+
+#if DISPLAY_ENABLED
+        // OLED
+        displayReadingToOLED();
+#endif
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
@@ -156,16 +170,27 @@ void printLightSensor() {
     lightSensor.manualStop();
 
     unsigned int data0, data1;
-    double lux;
 
     if (lightSensor.getData(data0, data1)) {
         bool good;
         bool gain = false;
 
-        good = lightSensor.getLux(gain, lightSensorReadDelay, data0, data1, lux);
+        good = lightSensor.getLux(gain, lightSensorReadDelay, data0, data1, lastLuxValue);
     } else {
-        lux = 0;
+        lastLuxValue = 0;
     }
 
-    ESP_LOGI("LIGHT", "Lux: %f", lux);
+    ESP_LOGI("LIGHT", "Lux: %f", lastLuxValue);
+}
+
+void displayReadingToOLED() {
+    oled.clearDisplay();
+    oled.setTextXY(0, 0);
+    oled.putString("---- ALORA ----");
+    oled.setTextXY(3, 0);
+    oled.putString("T:" + String(bme.getTemperature_C()) + ", H:" + String(bme.getHumidity()));
+    oled.setTextXY(5, 0);
+    oled.putString("P:" + String(bme.getPressure_HP() / 1000));
+    oled.setTextXY(7, 0);
+    oled.putString("L:" + String(lastLuxValue));
 }
