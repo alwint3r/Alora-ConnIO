@@ -7,6 +7,7 @@
 #include <BME280_I2C.h>
 #include <AllAboutEE_MAX11609.h>
 #include <Adafruit_SHT31.h>
+#include <SFE_LSM9DS0.h>
 
 using namespace AllAboutEE;
 
@@ -16,16 +17,19 @@ static const char* TAG = "APP";
 #define SOUND_SENSOR_ADDRESS 0x2f
 #define SOUND_SENSOR_R 51000
 #define SOUND_SENSOR_CHANNEL 1
+#define LSM9DS0_XM_ADDRESS 0x1d
+#define LSM9DS0_G 0x6b
 
 BME280_I2C bme;
 MAX11609 adc;
 Adafruit_SHT31 sht31;
+LSM9DS0 imuSensor(MODE_I2C, LSM9DS0_G, LSM9DS0_XM_ADDRESS);
 
-void writeToMicSensor(uint8_t reg, uint8_t data);
 void readSensorTask(void* parameter);
-void bmeReadTask(void* parameter);
-void gasSensorReadTask(void* parameter);
-void soundSensorReadTask(void* parameter);
+void printGyro();
+void printAccel();
+void printMag();
+void writeToMicSensor(uint8_t reg, uint8_t data);
 
 extern "C" void app_main() {
     initArduino();
@@ -39,6 +43,8 @@ extern "C" void app_main() {
         ESP_LOGE(TAG, "Failed to initialize SHT31");
     }
 
+    imuSensor.begin();
+
     ESP_LOGI(TAG, "Initializing gas sensor.");
     adc.begin(MAX11609::REF_VDD);
     pinMode(GAS_SENSOR_HEAT_PIN, OUTPUT);
@@ -48,7 +54,6 @@ extern "C" void app_main() {
 }
 
 void readSensorTask(void* parameter) {
-
     while (true) {
         // BME280
         bme.readSensor();
@@ -67,6 +72,11 @@ void readSensorTask(void* parameter) {
         writeToMicSensor(0x00, (SOUND_SENSOR_R * 1.0f/(100*1000/256)));
         ESP_LOGI("SOUND_SENSOR", "%d", adc.read(SOUND_SENSOR_CHANNEL));
 
+        // LSM9DS0
+        printGyro();
+        printAccel();
+        printMag();
+
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
@@ -76,4 +86,44 @@ void writeToMicSensor(uint8_t reg, uint8_t data) {
     Wire.write(reg);
     Wire.write(data);//(SOUND_SENSOR_R * 1.0f/(100*1000/256)));
     Wire.endTransmission();
+}
+
+void printGyro() {
+    imuSensor.readGyro();
+    ESP_LOGI("LSM9DS0_GYRO", "GX: %f\tGY: %f\tGZ: %f",
+        imuSensor.calcGyro(imuSensor.gx),
+        imuSensor.calcGyro(imuSensor.gy),
+        imuSensor.calcGyro(imuSensor.gz));
+}
+
+void printAccel() {
+    imuSensor.readAccel();
+    ESP_LOGI("LSM9DS0_ACCEL", "AX: %f\tAY: %f\tAZ: %f",
+        imuSensor.calcAccel(imuSensor.ax),
+        imuSensor.calcAccel(imuSensor.ay),
+        imuSensor.calcAccel(imuSensor.az));
+}
+
+void printMag() {
+    imuSensor.readMag();
+
+    float heading;
+
+    if (imuSensor.my > 0) {
+        heading = 90 - (atan(imuSensor.mx / imuSensor.my) * (180 / PI));
+    } else if (imuSensor.my < 0) {
+        heading = -(atan(imuSensor.mx / imuSensor.my) * (180 / PI));
+    } else {
+        if (imuSensor.mx < 0) {
+            heading = 180;
+        } else {
+            heading = 0;
+        }
+    }
+
+    ESP_LOGI("LSM9DS0_MAG", "MX: %f\tMY: %f\tMZ: %f\tH: %f",
+        imuSensor.calcMag(imuSensor.mx),
+        imuSensor.calcMag(imuSensor.my),
+        imuSensor.calcMag(imuSensor.mz),
+        heading);
 }
