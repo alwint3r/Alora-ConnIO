@@ -10,22 +10,13 @@
 #include <SFE_LSM9DS0.h>
 #include <SparkFunTSL2561.h>
 #include <ACROBOTIC_SSD1306.h>
+#include "AloraConstants.h"
 
 using namespace AllAboutEE;
 
 static const char* TAG = "APP";
 unsigned int lightSensorReadDelay = 0;
 double lastLuxValue = 0;
-
-#define GAS_SENSOR_HEAT_PIN 17
-#define GAS_SENSOR_ADC_CHANNEL 0
-#define SOUND_SENSOR_ADDRESS 0x2f
-#define SOUND_SENSOR_R 51000
-#define SOUND_SENSOR_CHANNEL 1
-#define LSM9DS0_XM_ADDRESS 0x1d
-#define LSM9DS0_G 0x6b
-
-#define DISPLAY_ENABLED 0
 
 BME280_I2C bme;
 MAX11609 adc;
@@ -98,7 +89,7 @@ void readSensorTask(void* parameter) {
 
         // Sound Sensor
         writeToMicSensor(0x00, (SOUND_SENSOR_R * 1.0f/(100*1000/256)));
-        ESP_LOGI("SOUND_SENSOR", "%d", adc.read(SOUND_SENSOR_CHANNEL));
+        ESP_LOGI("SOUND_SENSOR", "%d", adc.read(SOUND_SENSOR_ADC_CHANNEL));
 
         // LSM9DS0
         printGyro();
