@@ -11,6 +11,10 @@
 #define LSM9DS0_XM_ADDRESS 0x1d
 #define LSM9DS0_G 0x6b
 
+/* Enable or disable OLED display
+ * 1 - Enable
+ * 0 - Disable
+ */
 #define DISPLAY_ENABLED 0
 
 #endif
